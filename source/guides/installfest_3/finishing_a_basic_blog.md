@@ -9,7 +9,7 @@ In the [previous article](/guides/installfest/getting_started) you built a simpl
 
 First we want to start our Rails server, so open two terminals and change to the directory we're developing our app in. In one of our terminals start the Rails server with `rails s` (s is short for server). Next start Sublime Text and open the folder that your app is stored in. By doing this you get to see the directory structure of Rails in the sidebar so you'll be able to navigate around your project a little more easily.
 
-![image](/images/sublime_folder.png)
+![image](http://reinteractive.net/assets/blog_images/rails-3-2-intro-blog/sublime_folder.png)
 
 
 ## Setting the index/root page in Rails
@@ -18,7 +18,9 @@ Currently our site only shows the posts if you navigate to `/posts`.  This is al
 
 Obviously, if we want people to start reading our blog, it would be good if we show the blog posts we have immediately when they come to our site, without having them navigate elsewhere.
 
-To set the root page of a Rails application, open `config/routes.rb` and add `root :to => 'posts#index'` to that file so it looks like:
+To set the root page of a Rails application, first you need to delete the "Welcome to Rails" page that is located at `public/index.html`.
+
+Once done, open `config/routes.rb` and add `root :to => 'posts#index'` to that file so it looks like:
 
 ```ruby
 QuickBlog::Application.routes.draw do
@@ -38,6 +40,7 @@ At this point you can commit all your changes using git by typing:
 
 ```ruby
 git add .
+git rm public/index.html
 git commit -m "setting a root page"
 ```
 
@@ -47,7 +50,7 @@ And then you can deploy to Heroku with `git push heroku master`. You'll be able 
 
 The blogging engine we've got works great, but it definitely doesn't feel like a smooth, modern web-app. Luckily with Rails it's easy to add in simple JavaScript! Just like all the other helpers that Rails provides if this isn't powerful enough for your needs you can always add as much custom JavaScript into `app/assets/javascripts/` as you like.
 
-What you'll be doing is adding in some functionality to the commenting system so that posting a comment doesn't require a page reload. This means we'll be submitting our comments using AJAX and then rendering the comments onto the post page using JavaScript. First we'll tackle posting the form using AJAX.
+What you'll be doing is adding in some functionality to the commenting system so that it posting a comment doesn't require a page reload. This means we'll be submitting our comments using AJAX and then rendering the comments onto the post page using JavaScript. First we'll tackle posting the form using AJAX.
 
 #### Making the form submit via AJAX
 
@@ -77,16 +80,30 @@ Open `app/views/posts/show.html.erb` and add a `:remote => true` option to the f
 
 Adding that the remote flag to that method call means that Rails will automatically set up that form to be submitted via AJAX.
 
-If you refresh the [post view page](http://localhost:3000/posts/1) and try to submit a comment you'll notice that nothing happens. If you switch to the terminal running your Rails server you'll be able to see that the request was received by the server and the comment saved to the database, but this hasn't been reflected in the page yet.
+If you refresh the [post view page](http://localhost:3000/posts/1) and try to submit a comment you'll notice that nothing happens, however if you switch to the terminal running your Rails server you'll be able to see that the request was received by the server, it's just doing the wrong thing with that request. 
+
+```ruby
+Started POST "/posts/1/comments" for 127.0.0.1 at 2013-04-23 11:24:09 +1000
+Processing by CommentsController#create as JS
+  Parameters: {"utf8"=>"✓", "authenticity_token"=>"7LoEUBBCMxTBpHrno9DiLO80itbBagHKsiTmAbhODJ0=", "comment"=>{"body"=>"Test comment"}, "commit"=>"Add comment", "post_id"=>"1"}
+  Post Load (0.1ms)  SELECT "posts".* FROM "posts" WHERE "posts"."id" = ? LIMIT 1  [["id", "1"]]
+   (0.0ms)  begin transaction
+  SQL (4.8ms)  INSERT INTO "comments" ("body", "created_at", "post_id", "updated_at") 
+VALUES (?, ?, ?, ?)  [["body", "Test comment"], ["created_at", Tue, 23 Apr 2013 01:24:09 UTC +00:00], ["post_id", 1], ["updated_at", Tue, 23 Apr 2013 01:24:09 UTC +00:00]]
+   (0.9ms)  commit transaction
+Redirected to http://localhost:3000/posts/1
+```
+
+The last line of the log here indicated that the server redirected to /posts/1 as the response. We don't want that behaviour for an AJAX call.
 
 #### Setting up the server to process AJAX requests
 
-To update the page with the new comment we need to make our create comment action aware of JavaScript AJAX requests. Open `app/controllers/comments_controller.rb` and change the create method to respond to AJAX requests as follows:
+Let's fix that by making our create comment action aware of JavaScript AJAX requests. Open `app/controllers/comments_controller.rb` and change the create method to respond to AJAX requests as follows:
 
 ```ruby
   def create
     @post = Post.find(params[:post_id])
-    @comment = @post.comments.create!(comment_params)
+    @comment = @post.comments.create!(params[:comment])
     respond_to do |format|
       format.html { redirect_to @post }
       format.js
@@ -94,7 +111,7 @@ To update the page with the new comment we need to make our create comment actio
   end
 ```
 
-What this means is that your app will respond to regular HTML requests in the same way as before (by redirecting to the url of the post), but will render a view when receiving a JS request. This view doesn't exist yet so you'll need to create it now. Create a new file `app/views/comments/create.js.erb`. This is a JS file that will be returned to the browser and executed. We want it to do 2 things: Insert the comment html into the document, and clear the comment form. Your `create.js.erb` file should look like:
+What this means is that your app will respond to regular HTML requests in the same way as before (by redirecting to the url of the post) but will render a view when receiving a JS request. This view doesn't exist yet so you'll need to create it now. Create a new file `app/views/comments/create.js.erb`. This is a JS file that will be returned to the browser and executed. We want it to do 2 things: Insert the comment html into the document, and clear the comment form. Your `create.js.erb` file should look like:
 
 ```js
 $('#comments').append('<%= escape_javascript(render :partial => @comment) %>');
@@ -118,9 +135,28 @@ And then you can deploy to Heroku with `git push heroku master`. You'll be able 
 
 The next feature on our list is to implement an RSS Atom feed. Once again Rails makes this job pretty simple. We'll be outputting our list of posts in an Atom format rather than a HTML format. If you open `app/controllers/posts_controller.rb` you might notice that already the index method will respond to the JSON format. We can see this in action by going to: [http://localhost:3000/posts.json](http://localhost:3000/posts.json). You'll see all your posts rendered in JSON format. 
 
-But if you go to [http://localhost:3000/posts.atom](http://localhost:3000/posts.atom) you'll receive an error that the template is missing. 
+#### Making the server Atom aware
 
-![template missing error](/images/missing_template.png)
+Our first job is to get the same behaviour but render the posts in Atom format. Update your index action so it looks like:
+
+```ruby
+  # GET /posts
+  # GET /posts.json
+  # GET /posts.atom
+  def index
+    @posts = Post.all
+
+    respond_to do |format|
+      format.html # index.html.erb
+      format.json { render json: @posts }
+      format.atom
+    end
+  end
+```
+
+If you goto [http://localhost:3000/posts.atom](http://localhost:3000/posts.atom) you'll receive an error that the template is missing. 
+
+![template missing error](http://reinteractive.net/assets/blog_images/rails-3-2-intro-blog/missing_template.png)
 
 #### Building the Atom feed
 
@@ -128,7 +164,7 @@ This just means we need to create it. We'll be creating a file called: `app/view
 
 ```ruby
 atom_feed do |feed|
-  feed.title "InstallFest 2014 Quick Blog"
+  feed.title "InstallFest 2013 Quick Blog"
   feed.updated @posts.first.updated_at
 
   @posts.each do |post|
@@ -148,15 +184,15 @@ You might want to customise your ATOM feed by changing the name of the blog, or 
 
 #### RSS feed discovery
 
-Our next job is to publicise the ATOM feed so that RSS readers can easily subscribe. We'll do this by opening `app/views/layouts/application.html.erb` and adding in a link tag that lets some browsers auto-discover our RSS feed. Your `application.html.erb` file should look like:
+Our next job is to publicise the ATOM feed so that RSS readers (if they still exist) can easily subscribe. We'll do this by opening `app/views/layouts/application.html.erb` and adding in a link tag that lets some browsers auto-discover our RSS feed. Your `application.html.erb` file should look like:
 
 ```erb
 <!DOCTYPE html>
 <html>
 <head>
   <title>QuickBlog</title>
-  <%= stylesheet_link_tag    "application", media: "all", "data-turbolinks-track" => true %>
-  <%= javascript_include_tag "application", "data-turbolinks-track" => true %>
+  <%= stylesheet_link_tag    "application", :media => "all" %>
+  <%= javascript_include_tag "application" %>
   <%= csrf_meta_tags %>
   <%= auto_discovery_link_tag(:atom, posts_path(:atom)) %>
 </head>
@@ -185,36 +221,33 @@ And then you can deploy to Heroku with `git push heroku master`. You'll be able 
 
 ## Giving your blog some style
 
-Up until this point we've really neglected the look and feel of your blog. It definitely feels a bit boring! We'll be making it look much nicer by using a UI library called [Foundation](http://foundation.zurb.com/). Foundation is similar to [Twitter Bootstrap](http://twitter.github.io/bootstrap/), but is a bit easier to integrate with Rails. Foundation is built using [Sass](http://sass-lang.com/) while Bootstrap is built using [Less](http://lesscss.org/). You can run Less in Rails, but it has some compatibility issues with Windows so today we'll be using Foundation.
+Up until this point we've really neglected the look and feel of your blog. It definitely feels a bit boring! We'll be making it look much nicer by using a UI library called [Foundation](http://foundation.zurb.com/). Foundation is similar to [Twitter Bootstrap](http://twitter.github.io/bootstrap/), but is slightly more compatible with Rails. Foundation is built using [Sass](http://sass-lang.com/) while Bootstrap is built using [Less](http://lesscss.org/). You can run Less in Rails, but it has some compatibility issues with Windows so today we'll be using Foundation.
 
 We'll be installing Foundation using the zurb-foundation gem by adding it to our Gemfile's asset group. The Gemfile is a file that sits at the top level of your application directory structure and lists all of the dependencies and libraries that your code uses. Update your Gemfile so it looks like:
 
 ```ruby
 source 'https://rubygems.org'
 
-gem 'rails', '4.0.0'
+gem 'rails', '~> 3.2.12'
 
-gem 'sass-rails', '~> 4.0.0'
-gem 'uglifier', '>= 1.3.0'
-gem 'coffee-rails', '~> 4.0.0'
-gem 'jquery-rails'
-gem 'turbolinks'
-gem 'jbuilder', '~> 1.2'
-
-gem 'zurb-foundation', '~> 4.3.2'
-
+ # For gems only used in development
 group :development, :test do
   gem 'sqlite3'
 end
 
 group :production do
   gem 'pg'
-  gem 'rails_12factor'
 end
 
-group :doc do
-  gem 'sdoc', require: false
+group :assets do
+  gem 'sass-rails',   '~> 3.2.3'
+  gem 'coffee-rails', '~> 3.2.1'
+  gem 'uglifier', '>= 1.0.3'
+
+  gem 'zurb-foundation', '~> 4.0.0'
 end
+
+gem 'jquery-rails'
 ```
 
 After you've saved that file, switch to your terminal and run: `bundle install --without=production`. We're going to skip installing the postgres gem in our development environment since it's likely your computer isn't set up to build it properly. Make sure at this point you also restart your Rails server, so switch to the command prompt where Rails is running press `Ctrl-C` and then restart it by typing `rails s`.
@@ -228,7 +261,7 @@ Overwrite /Users/artega/dev/reinteractive/quick_blog/app/views/layouts/applicati
 
 Press n and then enter to skip overwriting our `application.html.erb` layout file. By skipping this we do miss out on some of Foundation's responsive design features, but we've already added our RSS link to our layout file and allowing the install to overwrite our layout file would mean we'd lose that link. If you're comfortable putting the autodiscovery link tag back into the new layout file, rerun the foundation install and allow it to overwrite your layout.
 
-You'll also want to remove the scaffolding css file that Rails provided to you when you scaffolded the Posting functionality. To do that just delete `app/assets/stylesheets/scaffolds.css.scss`. Restarting the local server again and navigating to [http://localhost:3000](http://localhost:3000) at this point will show some changes to the UI of your blog.
+You'll also want to remove the scaffolding css file that Rails provided to you when you scaffolded the Posting functionality. To do that just delete `app/assets/stylesheets/scaffolds.css.scss`. Refreshing your browser or navigating to [http://localhost:3000](http://localhost:3000) at this point will show some changes to the UI of your blog.
 
 We're going to start off with two very quick things with Foundation. We'll give our content some whitespace so it's easier to read, and we'll change all our buttons so that they have a bit more style. First open your layout file `app/views/layouts/application.html.erb` and update it to look like:
 
@@ -237,8 +270,8 @@ We're going to start off with two very quick things with Foundation. We'll give 
   <html>
   <head>
     <title>QuickBlog</title>
-    <%= stylesheet_link_tag    "application", media: "all", "data-turbolinks-track" => true %>
-    <%= javascript_include_tag "application", "data-turbolinks-track" => true %>
+    <%= stylesheet_link_tag    "application", :media => "all" %>
+    <%= javascript_include_tag "application" %>
     <%= csrf_meta_tags %>
     <%= auto_discovery_link_tag(:atom, posts_path(:atom)) %>
   </head>
@@ -281,7 +314,7 @@ Then we'll open `app/assets/stylesheets/application.css` and delete the line wit
  */
 ```
 
-Finally we'll open `app/assets/stylesheets/foundation_and_overrides.css.scss` and at the bottom of the file import the 'common' styles, so that it looks like this:
+Finally we'll open `app/assets/stylesheets/foundation_and_overrides.css.scss` and at the bottom of the file it should look like:
 
 ```ruby
 @import 'foundation';
@@ -365,17 +398,18 @@ These Header and Footer files contain some example HTML that will give you a sta
 <html>
 <head>
   <title>QuickBlog</title>
-  <%= stylesheet_link_tag    "application", media: "all", "data-turbolinks-track" => true %>
-  <%= javascript_include_tag "application", "data-turbolinks-track" => true %>
+  <%= stylesheet_link_tag    "application", :media => "all" %>
+  <%= javascript_include_tag "application" %>
   <%= csrf_meta_tags %>
   <%= auto_discovery_link_tag(:atom, posts_path(:atom)) %>
 </head>
 <body>
   <%= render :partial => 'layouts/header' %>
 
-<div id="main">
-  <%= yield %>
-</div>
+  <div id="main">
+    <%= yield %>
+  </div>
+
   <%= render :partial => 'layouts/footer' %>
 </body>
 </html>

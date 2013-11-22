@@ -7,7 +7,7 @@ github_url: https://github.com/reinteractive-open/installfest_guides/tree/master
 
 #### Prerequisites
 
-1. A working version of Rails 4.0 which you can install using [Rails Installer](http://railsinstaller.org/) for Windows or Mac.
+1. A working version of Rails 3.2 which you can install using [Rails Installer](http://railsinstaller.org/) for Windows or Mac.
 2. Sublime Text 2. If you prefer another text editor like vim, emacs or TextMate that's fine too but these instructions will specifically mention Sublime.
 
 #### Next steps
@@ -26,7 +26,7 @@ Entering this command into your command prompt will cause Rails to generate a ne
 
 To change into the folder where your application is stored. If you look at the contents of this folder you'll see:
 
-![The default Rails application structure](/images/default_rails_structure_rails4.png)
+![The default Rails application structure](http://reinteractive.net/assets/blog_images/rails-3-2-intro-blog/default_rails_structure.png)
 
 This is the standard structure of a new Rails application. Once you learn this structure it makes working with Rails easier since everything is in a standard place. Next we'll run this fresh application to check that our Rails install is working properly. Type:
 
@@ -34,7 +34,7 @@ This is the standard structure of a new Rails application. Once you learn this s
 
 Open your web-browser and head to: [http://localhost:3000](http://localhost:3000) you should see something that looks like:
 
-![Rails default homepage](/images/rails_default_home.png)
+![Rails default homepage](http://reinteractive.net/assets/blog_images/rails-3-2-intro-blog/rails_default_home.png)
 
 Now that you've created the Rails application you should open this folder using Sublime. Open up Sublime, then open the quick_blog folder that was just generated.
 
@@ -46,7 +46,7 @@ Now we're ready to get started building an actual blog. In your command prompt p
 
 You'll be presented with something that looks like:
 
-![Scaffolding posts](/images/scaffolding_posts.png)
+![Scaffolding posts](http://reinteractive.net/assets/blog_images/rails-3-2-intro-blog/scaffolding_posts.png)
 
 An important file that was generated was the migration file: `db/migrate/20130422001725_create_posts.rb` Note that you will have a different set of numbers in yours.
 
@@ -85,6 +85,8 @@ To the code. Your `post.rb` file should look like:
 
 ```ruby
 class Post < ActiveRecord::Base
+  attr_accessible :body, :title
+
   validates_presence_of :body, :title
 end
 ```
@@ -150,9 +152,10 @@ Our index page still hasn't changed though so we're going to open the `index.htm
 
 ## Access control
 
-One huge problem with our blog is that anyone can create, edit and delete blog posts. Let's fix that. We'll use HTTP Basic authentication to put a password on actions we don't want everyone accessing. Open `app/controllers/posts_controller.rb` and add `before_filter :authenticate, :except => [ :index, :show ]` on line 2 just below the class declaration. Near the bottom of your file there is a line that says `private`, directly underneath that line, post this method:
+One huge problem with our blog is that anyone can create, edit and delete blog posts. Let's fix that. We'll use HTTP Basic authenticate to put a password on actions we don't want everyone accessing. Open `app/controllers/posts_controller.rb` and add `before_filter :authenticate, :except => [ :index, :show ]` on line 2 just below the class declaration. At the bottom of your file put the following code:
 
 ```ruby
+  private
   def authenticate
     authenticate_or_request_with_http_basic do |name, password|
       name == "admin" && password == "secret"
@@ -174,8 +177,6 @@ class PostsController < ApplicationController
       name == "admin" && password == "secret"
     end
   end
-
-  //.. A couple of additional methods are here
 end
 ```
 
@@ -198,6 +199,8 @@ After this you'll need to inform Rails that your Posts will potentially have man
 
 ```ruby
 class Post < ActiveRecord::Base
+  attr_accessible :body, :title
+
   has_many :comments
 
   validates_presence_of :body, :title
@@ -207,13 +210,11 @@ end
 The back-end for your comments is almost complete, we only need to configure the url that is used to create your comments. Since comments belong to a post we'll make the URL reflect this. Right now you can see all the configured URLs by typing `rake routes` in your command prompt. If you do this now you'll get something like the following:
 
 ```ruby
-      Prefix Verb   URI Pattern                  Controller#Action
     comments GET    /comments(.:format)          comments#index
              POST   /comments(.:format)          comments#create
  new_comment GET    /comments/new(.:format)      comments#new
 edit_comment GET    /comments/:id/edit(.:format) comments#edit
      comment GET    /comments/:id(.:format)      comments#show
-             PATCH  /comments/:id(.:format)      comments#update
              PUT    /comments/:id(.:format)      comments#update
              DELETE /comments/:id(.:format)      comments#destroy
        posts GET    /posts(.:format)             posts#index
@@ -221,12 +222,11 @@ edit_comment GET    /comments/:id/edit(.:format) comments#edit
     new_post GET    /posts/new(.:format)         posts#new
    edit_post GET    /posts/:id/edit(.:format)    posts#edit
         post GET    /posts/:id(.:format)         posts#show
-             PATCH  /posts/:id(.:format)         posts#update
              PUT    /posts/:id(.:format)         posts#update
              DELETE /posts/:id(.:format)         posts#destroy
 ```
 
-Your URLs (or routes) are always configured in the file `config/routes.rb`, open it now and remove the line `resources :comments`. Re-run `rake routes` and you'll notice that all the URLs for comments have disappeared. Update your `routes.rb` file to look like the following:
+Your URLs (or routes) are configured in all Rails applications in the file `config/routes.rb`, open it now and remove the line `resources :comments`. Re-run `rake routes` and you'll notice that all the URLs for comments have disappeared. Update your `routes.rb` file to look like the following:
 
 ```ruby
 QuickBlog::Application.routes.draw do
@@ -234,8 +234,7 @@ QuickBlog::Application.routes.draw do
     resources :comments, :only => [:create]
   end
 
-  # A few commented examples follow underneath
-
+  # root :to => 'welcome#index'
 end
 ```
 
@@ -253,14 +252,8 @@ Open `app/controllers/comments_controller.rb` and make your code look like the f
 class CommentsController < ApplicationController
   def create
     @post = Post.find(params[:post_id])
-    @comment = @post.comments.create!(comment_params)
+    @comment = @post.comments.create!(params[:comment])
     redirect_to @post
-  end
-
-  private
-
-  def comment_params
-    params.require(:comment).permit(:body)
   end
 end
 ```
@@ -322,13 +315,7 @@ Up until this point we've been using SQLite as our database, but unfortunately H
 ```ruby
 source 'https://rubygems.org'
 
-gem 'rails', '4.0.0'
-gem 'sass-rails', '~> 4.0.0'
-gem 'uglifier', '>= 1.3.0'
-gem 'coffee-rails', '~> 4.0.0'
-gem 'jquery-rails'
-gem 'turbolinks'
-gem 'jbuilder', '~> 1.2'
+gem 'rails', '3.2.12'
 
 group :development, :test do
   gem 'sqlite3'
@@ -336,12 +323,16 @@ end
 
 group :production do
   gem 'pg'
-  gem 'rails_12factor'
 end
 
-group :doc do
-  gem 'sdoc', require: false
+group :assets do
+  gem 'sass-rails',   '~> 3.2.3'
+  gem 'coffee-rails', '~> 3.2.1'
+
+  gem 'uglifier', '>= 1.0.3'
 end
+
+gem 'jquery-rails'
 ```
 
 After this, run the command `bundle install --without=production` on your command line.
@@ -365,10 +356,6 @@ In the same command prompt you should be ready to deploy your application. First
 Now we push our application to Heroku:
 
 `git push heroku master`
-
-At the end of this process heroku should tell you what the URL of your app is, something like:
-
-http://something-something-1234.herokuapp.com
 
 Finally we set up our database:
 
